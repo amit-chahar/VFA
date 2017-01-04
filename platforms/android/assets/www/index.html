@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+	<meta name="viewport" content="user-scalable=yes, initial-scale=2"/>
+    <title>WISPERO</title>
+	<link rel="stylesheet" type="text/css" href="css/main.css">
+  <script src="js/hammer.js"></script>
+	<script src="libs/jquery/jquery.js"></script>
+	<script src="cordova.js"></script>
+</head>
+<body style="overflow: hidden;">
+				
+	<div class="firstScreen">
+		<div id="lowerScreen" >
+				<img id=imgId>
+				<div id="searchBox" >
+					<div id="leftCircle">
+					</div>
+					<div id="rightCircle">
+					</div>
+					<div id="rectangle">
+						<div id="textSubmit" onclick="Up()">
+							SEARCH
+						</div>
+					</div>
+				</div>
+			<!-- <div id="dataHolder">
+				<div class="dataSet">
+					<div class="iconSet"></div>
+					<div class="uid">XYDH456CNFH627</div>
+					<div class="colorCircle"></div>
+					<div class="versionNo">V-3.4.5xz</div>
+				</div>
+			</div> -->
+			
+		</div>
+			<div id="refreshButton" onclick="onRefresh()">
+			<img src="refresh3.png" style="height: 100%;width:100%"></div>
+
+		<div id="upperScreen">
+					<div class="g-signin2" data-onsuccess="onSignIn" style="top:10%;left: 10%;height: 40%;width:60%;"></div>
+
+			<div id="topBar">
+					<div id="menuBar">
+					</div>
+					<div id="homeBar"  >
+					HOME
+					</div>
+				</div>
+
+
+			<div id="middleScreen" style="touch-action: pan-y; user-select: none; -webkit-user-drag: none; -webkit-tap-highlight-color: rgba(0, 0, 0, 0);">
+				<div id="dp">
+				<img src="khareSir.jpg" style="height: 100%;width:100% ;">
+				</div>
+				<div id="status">
+				WISPERO
+				</div>
+				<div id="personName">
+					VULNERABILITY FINDER
+				</div>
+			</div>
+		</div>
+		
+	</div>
+
+<script>
+var gTestLogData = '';
+
+var gFoundDevices = {};
+
+var gDeviceData = {};
+
+var gCallTracer = 0;
+
+var gFailedTests = 0;
+
+function display(text)
+{
+	
+}
+
+function testLog(message)
+{
+	if (message.indexOf('FAIL') > -1)
+	{
+		message = '<span style="color:rgb(255,0,0)">' + message + '</span>';
+	}
+
+	gTestLogData += message + '\n';
+	console.log(message);
+	display(gTestLogData);
+}
+
+function closeAllDevices()
+{
+	for (handle in gDeviceData)
+	{
+		evothings.ble.close(handle);
+	}
+}
+
+function displayDeviceData()
+{
+	displayDeviceTree(gDeviceData, 1, '');
+}
+
+function displayDeviceTree(obj, level, indent)
+{
+	var label = 'Unknown: ';
+	(level == 1) && (label = 'Device: ');
+	(level == 2) && (label = 'Service: ');
+	(level == 3) && (label = 'Characteristic: ');
+	(level == 4) && (label = 'Descriptor: ');
+
+	// Display top-level properties (nicer if these are shown first).
+	for (prop in obj)
+	{
+		if (obj.hasOwnProperty(prop))
+		{
+			var value = obj[prop]
+			if (typeof value != 'object')
+			{
+				testLog(indent + prop + ': ' + value)
+			}
+		}
+	}
+
+	// Display object properties (children).
+	for (prop in obj)
+	{
+		if (obj.hasOwnProperty(prop))
+		{
+			var value = obj[prop]
+			if (typeof value == 'object')
+			{
+				testLog(indent + label)
+				displayDeviceTree(value, level + 1, indent + '  ')
+			}
+		}
+	}
+}
+
+function incrementCallTracer()
+{
+	++gCallTracer;
+}
+
+function decrementCallTracer()
+{
+	--gCallTracer;
+	if (0 == gCallTracer)
+	{
+		displayDeviceData();
+		closeAllDevices();
+
+		gFailedTests && testLog('FAIL: Number of fails: ' + gFailedTests);
+		!gFailedTests && testLog('PASS: All tests passed');
+		testLog('DONE: Test finished');
+	}
+}
+
+// Main entry point for tests.
+function startTest()
+{
+	stopScan();
+
+	gTestLogData = '';
+	gFoundDevices = {};
+	gDeviceData = {};
+	gCallTracer = 0;
+	gFailedTests = 0;
+
+	testLog('Starting test');
+
+	// Scan and start first test.
+	testScan();
+}
+
+function resetTest()
+{
+	testLog('Resetting...');
+	window.location.reload(true);
+}
+
+function stopScan()
+{
+	evothings.ble.stopScan();
+}
+
+function testScan()
+{
+	testLog('Scanning...');
+
+	evothings.ble.startScan(
+		function(device)
+		{
+			// Run the test suite once per device.
+			if (!gFoundDevices[device.address])
+			{
+				//var de = JSON.stringify(device);
+				gFoundDevices[device.address] = true;
+				printBLEData(device);
+				// Start first test.
+				testConnectClose(device.address, 0);
+			}
+		},
+		function(errorCode)
+		{
+			testLog('FAIL: startScan error: ' + errorCode);
+		}
+	);
+}
+
+// Connect and close 10 times.
+function testConnectClose(address, counter)
+{
+	evothings.ble.connect(
+		address,
+		function(info)
+		{
+			if (info.state == 2) // Connected
+			{
+				testLog('LOG:  testConnectClose(' + counter + ') device: ' + address);
+
+				if (counter < 10)
+				{
+					evothings.ble.close(info.deviceHandle);
+				}
+				else
+				{
+					testLog('PASS: testConnectClose device: ' + address);
+
+					// This can be moved to a later test or to last test,
+					// depending on whether the test suite should pick up
+					// new devices.
+					stopScan();
+
+					// Run next test.
+					// Create entry for device.
+					gDeviceData[info.deviceHandle] = {};
+					gDeviceData[info.deviceHandle]['Address'] = address;
+					gDeviceData[info.deviceHandle]['ConnectCloseTest'] = 'PASS';
+					testRSSI(info.deviceHandle, gDeviceData[info.deviceHandle], 0);
+				}
+			}
+			else if (info.state == 0) // Disconnected
+			{
+				if (counter < 10)
+				{
+					// Connect again.
+					testConnectClose(address, counter + 1);
+
+					// If a timeout is needed, use this code:
+					// setTimeout(function() { testConnectClose(address, counter + 1); }, 1000);
+				}
+			}
+		},
+		function(errorCode)
+		{
+			testLog('FAIL: testConnectClose device: ' + address + ' error: ' + errorCode);
+			testLog('Try to start test again (this works on iOS)');
+		}
+	);
+}
+
+function testRSSI(deviceHandle, deviceData, counter)
+{
+	// Useful for skipping the RSSI test which takes time.
+	//testServices(deviceHandle, deviceData); return;
+
+	evothings.ble.rssi(
+		deviceHandle,
+		function(rssi)
+		{
+			testLog('LOG:  testRSSI(' + counter + ') deviceHandle: ' + deviceHandle +
+				' rssi: ' + rssi);
+			
+			if (counter < 10)
+			{
+				// Read RSSI again. Delay must be used, BLE cannot
+				// handle rapid RSSI polling (at least on iOS).
+				setTimeout(function(){testRSSI(deviceHandle, deviceData, counter + 1);}, 1000);
+			}
+			else
+			{
+				testLog('PASS: testRSSI device: ' + deviceHandle);
+
+				deviceData['RSSITest'] = 'PASS';
+
+				// Run next test.
+				testServices(deviceHandle, deviceData)
+			}
+
+		},
+		function(errorCode)
+		{
+			testLog('[FAIL testRSSI] error: ' + errorCode);
+		});
+}
+
+function testServices(deviceHandle, deviceData)
+{
+	testLog('Device ' + deviceHandle + ': Reading all services,');
+	testLog('characteristics and desciptors, please wait...');
+
+	incrementCallTracer();
+
+	evothings.ble.services(
+		deviceHandle,
+		function(services)
+		{
+			for (var i = 0; i < services.length; ++i)
+			{
+				var service = services[i];
+
+				// Create entry for service.
+				deviceData[service.handle] = {};
+				deviceData[service.handle]['UUID'] = service.uuid;
+
+				// Test test.
+				testCharacteristics(deviceHandle, service.handle, deviceData[service.handle]);
+			}
+
+			decrementCallTracer();
+		},
+		function(errorCode)
+		{
+			testLog('FAIL: testServices device: ' + deviceHandle + ' error: ' + errorCode);
+			++gFailedTests;
+			decrementCallTracer();
+		})
+}
+
+function testCharacteristics(deviceHandle, serviceHandle, serviceData)
+{
+	incrementCallTracer();
+
+	evothings.ble.characteristics(
+		deviceHandle,
+		serviceHandle,
+		function(characteristics)
+		{
+			//testLog('found characteristics: ' + characteristics.length);
+			for (var i = 0; i < characteristics.length; ++i)
+			{
+				var characteristic = characteristics[i];
+
+				// Create entry for characteristic.
+				serviceData[characteristic.handle] = {};
+				serviceData[characteristic.handle]['UUID'] = characteristic.uuid;
+
+				//testLog('characteristic uuid: ' + characteristic.uuid);
+
+				var readAllowed = characteristic.permissions & 1; // PERMISSION_READ
+				testReadCharacteristic(
+					deviceHandle,
+					characteristic.handle,
+					serviceData[characteristic.handle],
+					readAllowed);
+
+				// Next test.
+				testDescriptors(
+					deviceHandle,
+					characteristic.handle,
+					serviceData[characteristic.handle]);
+			}
+
+			decrementCallTracer();
+		},
+		function(errorCode)
+		{
+			testLog('FAIL: testCharacteristics: ' + errorCode);
+			serviceData['TestCharacteristics'] = 'FAIL: ' + errorCode;
+			++gFailedTests;
+			decrementCallTracer();
+		}
+	)
+}
+
+function testReadCharacteristic(deviceHandle, characteristicHandle, characteristicData, readAllowed)
+{
+	incrementCallTracer();
+
+	evothings.ble.readCharacteristic(
+		deviceHandle,
+		characteristicHandle,
+		function(data)
+		{
+			characteristicData['Data'] = escape(
+				String.fromCharCode.apply(
+					null,
+					new Uint8Array(data)));
+			decrementCallTracer();
+		},
+		function(errorCode)
+		{
+			if (readAllowed)
+			{
+				characteristicData['Data'] = errorCode;
+				++gFailedTests;
+			}
+			else
+			{
+				characteristicData['Data'] = 'EXPECTED: ' + errorCode;
+			}
+
+			decrementCallTracer();
+		}
+	)
+}
+
+function testDescriptors(deviceHandle, characteristicHandle, characteristicData)
+{
+	incrementCallTracer();
+
+	evothings.ble.descriptors(
+		deviceHandle,
+		characteristicHandle,
+		function(descriptors)
+		{
+			for (var i = 0; i < descriptors.length; ++i)
+			{
+				var descriptor = descriptors[i];
+				
+				// Create entry for descriptor.
+				characteristicData[descriptor.handle] = {};
+				characteristicData[descriptor.handle]['UUID'] = descriptor.uuid;
+
+				var readAllowed = descriptor.permissions & 1; // PERMISSION_READ
+				testReadDescriptor(
+					deviceHandle,
+					descriptor.handle,
+					characteristicData[descriptor.handle],
+					readAllowed);
+			}
+
+			decrementCallTracer();
+		},
+		function(errorCode)
+		{
+			testLog('FAIL: testDescriptors: ' + errorCode + ' (see details below)');
+			characteristicData['TestDescriptors'] = 'FAIL: ' + errorCode;
+			++gFailedTests;
+			decrementCallTracer();
+		}
+	)
+}
+
+function testReadDescriptor(deviceHandle, descriptorHandle, descriptorData, readAllowed)
+{
+	incrementCallTracer();
+
+	evothings.ble.readDescriptor(
+		deviceHandle,
+		descriptorHandle,
+		function(data)
+		{
+			descriptorData['Data'] = escape(
+				String.fromCharCode.apply(
+					null,
+					new Uint8Array(data)));
+
+			decrementCallTracer();
+		},
+		function(errorCode)
+		{
+			if (readAllowed)
+			{
+				descriptorData['Data'] = errorCode;
+				++gFailedTests;
+			}
+			else
+			{
+				descriptorData['Data'] = 'EXPECTED: ' + errorCode;
+			}
+
+			decrementCallTracer();
+		}
+	);
+}
+
+function Up(){
+	document.getElementById('middleScreen').style.animation='up1 0.4s forwards';
+	document.getElementById('lowerScreen').style.top="50%";
+	document.getElementById('lowerScreen').style.height="50%";
+	//document.getElementById('leftCircle').style.animation='searchLeftCircle 0.3s forwards';
+	//document.getElementById('rightCircle').style.animation='searchRightCircle 0.3s forwards';
+	//document.getElementById('rectangle').style.animation='searchRectangle 0.3s forwards';
+	document.getElementById('searchBox').style.display='none';
+	document.getElementById('imgId').style.display='block';
+	document.getElementById('imgId').src='loader3.gif';
+	document.getElementById('homeBar').style.display='none';
+	//onSuccessOfBLE(device);
+	startTest();
+}
+
+function printBLEData(device){
+	document.getElementById('imgId').style.display='none';
+	document.getElementById('refreshButton').style.display='block';
+
+	var color = vulnerableData(device.address);
+
+	var data='<div class="cards"><div id="iconSet"><img src="bluetooth2.png" height="70%" width="auto"/></div><div id="uid">'+device.address+'</div><div id="colorCircle" style="background-color:'+color+'"></div><div id="versionNo">'+device.rssi+'</div></div>';
+
+
+	document.getElementById('lowerScreen').innerHTML+=data;
+
+}
+
+function vulnerableData(address){
+	var data=address;
+	var content=data.split(':');
+	data="";
+	for(i in content)
+	{
+		data+=content[i];
+	}
+	
+	function checkHex(n){return/^[0-9A-Fa-f]{1,64}$/.test(n)};
+	function Hex2Bin(n){if(!checkHex(n))return 0;return parseInt(n,16).toString(2)};
+	var a = Hex2Bin(data);
+	var noOfZero = 48 - a.length;
+	for(var i=0;i<noOfZero;i++)
+	{
+		a="0"+a;
+	}
+	var array = a.split("").map(Number);
+
+	var lastBit = array[0];
+	var secondLastBit = array[1];
+
+	if(lastBit==1 && secondLastBit==1){
+	        return "red";
+	}
+
+	else if(lastBit==0 && secondLastBit==0){
+	       return "green";
+	}
+
+	else if(lastBit==0 && secondLastBit==1){
+	        return "yellow";
+	}
+
+	else {
+	        return "black";
+	}
+
+}
+
+
+function onRefresh(){
+	document.getElementById('imgId').style.display='block';
+	var data="<img id=imgId>";
+	document.getElementById('lowerScreen').innerHTML=data;
+	startTest();
+}
+
+
+function onSuccessOfBLE(device){
+	document.getElementById('imgId').style.display='none';
+	renderDataBLE(device);
+}
+
+function renderDataBLE(device){
+	var data='<div class="cards"><div id="iconSet"><img src="bluetooth2.png" height="70%" width="auto"/></div><div id="uid">XYDH456CNFH627</div><div id="colorCircle"></div><div id="versionNo">V-3.4.5xz</div></div>';
+
+
+	document.getElementById('lowerScreen').innerHTML+=data;
+
+}
+
+
+var myElement = document.getElementById('middleScreen');
+
+var mc = new Hammer(myElement);
+mc.get('swipe').set({ direction: Hammer.DIRECTION_VERTICAL });
+mc.on("swipe", function(ev) {
+    console.log(ev.type);
+});
+
+
+
+
+
+
+
+
+
+document.addEventListener('deviceready', onDeviceReady, false)
+
+function onDeviceReady()
+{
+	//device is ready to implement bluetooth
+}
+
+
+
+</script>
+
+</body>
+</html>
